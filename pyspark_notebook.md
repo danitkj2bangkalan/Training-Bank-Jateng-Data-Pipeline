@@ -1,32 +1,111 @@
+# Dependencies Installation
+
 ```python
 # install required dependencies
 !pip install pyspark
 ```
+
 **Output:**
-```
+```text
 Requirement already satisfied: pyspark in /usr/local/lib/python3.13/dist-packages (4.0.4)
 Requirement already satisfied: py4j<0.10.9.10,>=0.10.9.7 in /usr/local/lib/python3.13/dist-packages (from pyspark) (0.10.9.9)
 ```
 
+---
+
+# Import Libraries
+
 ```python
 from google.colab import drive
 import sqlite3
+import requests
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as sf
 ```
+
+---
+
+# Data Lake Initialization & Mount
 
 ```python
 # mounting google drive as data lake
 drive.mount('/content/drive')
 
 products_csv_path = '/content/drive/MyDrive/Bank Jateng Training/products.csv'
-transactions_csv_path = '/content/drive/MyDrive/Bank Jateng Training/transactions.csv'
-customers_csv_path = '/content/drive/MyDrive/Bank Jateng Training/customers.csv'
+transactions_csv_path = '/content/drive/MyDrive/Bank Jateng Training/transactions_dirty_100000.csv'
+customers_csv_path = '/content/drive/MyDrive/Bank Jateng Training/customers_transactions.csv'
 ```
+
 **Output:**
+```text
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount("/content/drive", force_remount=True).
 ```
-Mounted at /content/drive
+
+---
+
+# REST API Ingestion Examples
+
+```python
+spark = SparkSession.builder.appName("RestApiIngestion").getOrCreate()
+
+url = "[https://jsonplaceholder.typicode.com/posts](https://jsonplaceholder.typicode.com/posts)"
+response = requests.get(url)
+data = response.json()
+
+df = spark.createDataFrame(data)
+df.show(5)
 ```
+
+**Output:**
+```text
++--------------------+---+--------------------+------+
+|                body| id|               title|userId|
++--------------------+---+--------------------+------+
+|quia et suscipit\...|  1|sunt aut facere r...|     1|
+|est rerum tempore...|  2|        qui est esse|     1|
+|et iusto sed quo ...|  3|ea molestias quas...|     1|
+|ullam et saepe re...|  4|eum et est occaecati|     1|
+|repudiandae venia...|  5|  nesciunt quas odio|     1|
++--------------------+---+--------------------+------+
+only showing top 5 rows
+```
+
+```python
+spark = SparkSession.builder.appName("DistributedApiIngestion").getOrCreate()
+
+urls = [f"[https://jsonplaceholder.typicode.com/posts?_page=](https://jsonplaceholder.typicode.com/posts?_page=){i}" for i in range(1, 6)]
+
+rdd_urls = spark.sparkContext.parallelize(urls)
+
+def fetch_data(url):
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    return []
+
+rdd_results = rdd_urls.flatMap(fetch_data)
+df_api = spark.createDataFrame(rdd_results)
+
+df_api.show(5)
+```
+
+**Output:**
+```text
++--------------------+---+--------------------+------+
+|                body| id|               title|userId|
++--------------------+---+--------------------+------+
+|quia et suscipit\...|  1|sunt aut facere r...|     1|
+|est rerum tempore...|  2|        qui est esse|     1|
+|et iusto sed quo ...|  3|ea molestias quas...|     1|
+|ullam et saepe re...|  4|eum et est occaecati|     1|
+|repudiandae venia...|  5|  nesciunt quas odio|     1|
++--------------------+---+--------------------+------+
+only showing top 5 rows
+```
+
+---
+
+# Spark Session Initialization
 
 ```python
 # Initialize Spark session
@@ -36,24 +115,15 @@ spark = SparkSession.builder \
 
 print("Spark Version:", spark.version)
 ```
+
 **Output:**
-```
+```text
 Spark Version: 4.0.4
 ```
 
-```python
-# create connector
-conn = sqlite3.connect('my_database.db')
-cursor = conn.cursor()
-```
+---
 
-```python
-cursor.execute('CREATE TABLE IF NOT EXISTS customers (customer_id TEXT, name TEXT, email TEXT, age INTEGER, region TEXT, restructure_date TEXT)')
-```
-**Output:**
-```
-<sqlite3.Cursor at 0x7c507d398d40>
-```
+# Extract Layer: Loading CSV Files
 
 ```python
 # Extract Layer
@@ -73,8 +143,9 @@ df_products.show(5)
 
 df_products.printSchema()
 ```
+
 **Output:**
-```
+```text
 +----------+--------------+-----------+-----+
 |product_id|  product_name|   category|price|
 +----------+--------------+-----------+-----+
@@ -90,7 +161,6 @@ root
  |-- product_name: string (nullable = true)
  |-- category: string (nullable = true)
  |-- price: integer (nullable = true)
-
 ```
 
 ```python
@@ -104,26 +174,27 @@ df_transactions.show(5)
 
 df_transactions.printSchema()
 ```
+
 **Output:**
-```
+```text
 +--------------+-----------+----------+----------------+------+---------+
 |transaction_id|customer_id|product_id|transaction_date|amount|   status|
 +--------------+-----------+----------+----------------+------+---------+
-|          T001|       C001|      P001|      2025-05-01|  1500|COMPLETED|
-|          T002|       C001|      P002|      2025-05-02|    25|COMPLETED|
-|          T003|       C002|      P003|      05/03/2025|   220|completed|
-|          T004|       C003|      P004|      2025-05-04|    45|COMPLETED|
-|          T005|       C004|      P005|      2025-05-05|    35|COMPLETED|
+|       T000001|     C42446|      P007|      2025-09-17| 216.0|COMPLETED|
+|       T000002|     C28141|      P945|      2025-01-31| 320.0|COMPLETED|
+|       T000003|     C74116|      P004|      2026-01-08|  90.0|COMPLETED|
+|       T000004|      C6106|      P003|      2025-04-03| 220.0|COMPLETED|
+|       T000005|     C13508|      P004|      2025-12-15|  90.0|CANCELLED|
 +--------------+-----------+----------+----------------+------+---------+
 only showing top 5 rows
+
 root
  |-- transaction_id: string (nullable = true)
  |-- customer_id: string (nullable = true)
  |-- product_id: string (nullable = true)
  |-- transaction_date: string (nullable = true)
- |-- amount: integer (nullable = true)
+ |-- amount: double (nullable = true)
  |-- status: string (nullable = true)
-
 ```
 
 ```python
@@ -137,96 +208,144 @@ df_customers.show(5)
 
 df_customers.printSchema()
 ```
+
 **Output:**
-```
-+-----------+------------+--------------------+----+-------+----------+
-|customer_id|        name|               email| age| region|created_at|
-+-----------+------------+--------------------+----+-------+----------+
-|       C001|    John Doe|JOHN.DOE@EXAMPLE.COM|  34|   WEST|2025-01-10|
-|       C002|   john doe |john.doe@example.com|NULL|   WEST|2025-02-15|
-|       C003|MARIA GARCIA|maria.garcia@exam...|  29|CENTRAL|2025-01-22|
-|       C004|Budi Santoso| BUDI.SANTOSO@EXA...|  41|   east|2025-03-02|
-|       C005| Siti Aminah|                NULL|  37|CENTRAL|2025-03-11|
-+-----------+------------+--------------------+----+-------+----------+
+```text
++--------------+-----------+----------+----------------+------+---------+-------------+--------------------+---+---------+----------+
+|transaction_id|customer_id|product_id|transaction_date|amount|   status|         name|               email|age|   region|created_at|
++--------------+-----------+----------+----------------+------+---------+-------------+--------------------+---+---------+----------+
+|       T000001|     C42446|      P007|       9/17/2025| 216.0|COMPLETED| Laura Taylor|laura.taylor@exam...| 38|     WEST|  6/4/2025|
+|       T000002|     C28141|      P945|       1/31/2025| 320.0|COMPLETED| Putri Taylor|putri.taylor@exam...| 21|  CENTRAL|  4/1/2025|
+|       T000003|     C74116|      P004|        1/8/2026|  90.0|COMPLETED|     Budi Lee|budi.lee@example.com| 42|NORTHWEST| 7/21/2025|
+|       T000004|      C6106|      P003|        4/3/2025| 220.0|COMPLETED|  Sari Wilson|sari.wilson@examp...| 56|NORTHWEST|  4/1/2025|
+|       T000005|     C13508|      P004|      12/15/2025|  90.0|CANCELLED|Michael Jones|michael.jones@exa...| 32|     EAST|  3/4/2025|
++--------------+-----------+----------+----------------+------+---------+-------------+--------------------+---+---------+----------+
 only showing top 5 rows
+
 root
+ |-- transaction_id: string (nullable = true)
  |-- customer_id: string (nullable = true)
+ |-- product_id: string (nullable = true)
+ |-- transaction_date: string (nullable = true)
+ |-- amount: double (nullable = true)
+ |-- status: string (nullable = true)
  |-- name: string (nullable = true)
  |-- email: string (nullable = true)
- |-- age: string (nullable = true)
+ |-- age: integer (nullable = true)
  |-- region: string (nullable = true)
- |-- created_at: date (nullable = true)
-
+ |-- created_at: string (nullable = true)
 ```
+
+---
+
+# Transform Layer
 
 ```python
 # transform layer
 
-df_cust = df_customers.withColumn("restructure_date", sf.date_format(sf.col("created_at"),"dd/MM/yyyy")) \
+df_clean_all = df_customers.dropna(how="all")
+
+df_customer_clean = df_clean_all.withColumn("Date", sf.to_date(sf.col("created_at"), "M/d/yyyy")) \
             .withColumn("region", sf.upper(sf.col("region"))) \
             .withColumnRenamed("customer_id", "user_id") \
             .drop("created_at")\
             .fillna('Unknown')
-df_cust.show()
-```
-**Output:**
-```
-+-------+-------------+--------------------+-------------+-------+----------------+
-|user_id|         name|               email|          age| region|restructure_date|
-+-------+-------------+--------------------+-------------+-------+----------------+
-|   C001|     John Doe|JOHN.DOE@EXAMPLE.COM|           34|   WEST|      10/01/2025|
-|   C002|    john doe |john.doe@example.com|      Unknown|   WEST|      15/02/2025|
-|   C003| MARIA GARCIA|maria.garcia@exam...|           29|CENTRAL|      22/01/2025|
-|   C004| Budi Santoso| BUDI.SANTOSO@EXA...|           41|   EAST|      02/03/2025|
-|   C005|  Siti Aminah|             Unknown|           37|CENTRAL|      11/03/2025|
-|   C006| Robert Smith|robert.smith@exam...|not_available|   WEST|      18/03/2025|
-|   C007|  Andi Wijaya|andi.wijaya@examp...|           25|  NORTH|      21/03/2025|
-|   C008|   Laura Chen|laura.chen@exampl...|           31|   EAST|      05/04/2025|
-|   C009|Michael Brown|michael.brown@exa...|           52|   WEST|      18/04/2025|
-|   C010| Dewi Lestari|dewi.lestari@exam...|           28|CENTRAL|      22/04/2025|
-+-------+-------------+--------------------+-------------+-------+----------------+
 
+df_customer_clean.show()
+```
+
+**Output:**
+```text
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+
+|transaction_id|user_id|product_id|transaction_date|amount|   status|            name|               email|age|   region|      Date|
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+
+|       T000001| C42446|      P007|       9/17/2025| 216.0|COMPLETED|    Laura Taylor|laura.taylor@exam...| 38|     WEST|2025-06-04|
+|       T000002| C28141|      P945|       1/31/2025| 320.0|COMPLETED|    Putri Taylor|putri.taylor@exam...| 21|  CENTRAL|2025-04-01|
+|       T000003| C74116|      P004|        1/8/2026|  90.0|COMPLETED|        Budi Lee|budi.lee@example.com| 42|NORTHWEST|2025-07-21|
+|       T000004|  C6106|      P003|        4/3/2025| 220.0|COMPLETED|     Sari Wilson|sari.wilson@examp...| 56|NORTHWEST|2025-04-01|
+|       T000005| C13508|      P004|      12/15/2025|  90.0|CANCELLED|   Michael Jones|michael.jones@exa...| 32|     EAST|2025-03-04|
+|       T000006| C69694|      P006|        5/5/2025|  85.0|COMPLETED|     Agus Aminah|agus.aminah@examp...| 48|  CENTRAL|2025-07-07|
+|       T000007| C10729|      P009|        8/3/2025| 160.0|COMPLETED|    Laura Aminah|laura.aminah@exam...| 65|     EAST|2025-01-13|
+|       T000008| C21622|      P003|       6/10/2025|-440.0|  PENDING|      Fajar Chen|fajar.chen@exampl...| 62|  CENTRAL|2025-03-08|
+|       T000009| C44581|      P010|       12/7/2025| 560.0|COMPLETED|       Putri Lee|putri.lee@example...| 58|     EAST|2025-01-29|
+|       T000010|  C8520|      P005|       6/27/2025| 105.0|COMPLETED| MICHAEL AMINAH |             Unknown| 45|     WEST|2025-04-14|
+|       T000011|  C2958|      P006|        5/7/2025|  42.5|COMPLETED|    PUTRI JONES |             Unknown| 48|     WEST|2025-05-01|
+|       T000012| C52154|      P008|       10/9/2025|  24.0|COMPLETED|      Daniel Doe|             Unknown| 28|     EAST|2025-06-09|
+|       T000013| C36494|      P006|       12/4/2025|  85.0|COMPLETED|     Maya Wijaya|maya.wijaya@examp...| 60|     EAST|2025-04-29|
+|       T000014| C30584|      P997|       10/1/2025|  35.0|COMPLETED|    Laura Aminah|laura.aminah@exam...| 18|     EAST|2025-02-27|
+|       T000015| C48399|      P006|       1/28/2025| 127.5|CANCELLED|    James Wilson|james.wilson@exam...| 21|     EAST|2025-01-24|
+|       T000016| C59854|      P009|        2/4/2025| 320.0|COMPLETED|     Kevin Smith|kevin.smith@examp...| 26|  Unknown|2025-05-09|
+|       T000017| C27364|      P002|        7/6/2025|  12.5|COMPLETED|     Kevin Brown|kevin.brown@examp...| 31|  CENTRAL|2025-02-16|
+|       T000018| C80444|      P997|       6/27/2025|  45.0|COMPLETED|    MARIA PUTRA | MARIA.PUTRA@EXAM...| 59|  CENTRAL|2025-04-05|
+|       T000019| C78942|      P002|       3/15/2025|  25.0|COMPLETED|      Sari Brown|sari.brown@exampl...| 46|    NORTH|2025-06-27|
+|       T000020| C13394|      P005|      12/20/2025| 105.0|  pending|     Arif Aminah|arif.aminah@examp...| 39|    NORTH|2025-07-20|
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+
+only showing top 20 rows
 ```
 
 ```python
-df_transactions = df_transactions.select(
-    df_transactions.amount,
-    sf.when(df_transactions.amount < 0, "poor")
-    .when((df_transactions.amount > 0) & (df_transactions.amount <= 500), "standart")
+df_customer_categorize = df_customer_clean.select(
+    df_customer_clean.transaction_id,
+    sf.when(df_customer_clean.amount < 0, "poor")
+    .when((df_customer_clean.amount > 0) & (df_customer_clean.amount <= 500), "standart")
     .otherwise("good").alias("transaction_type")
 )
-df_transactions.show()
-```
-**Output:**
-```
-+------+----------------+
-|amount|transaction_type|
-+------+----------------+
-|  1500|            good|
-|    25|        standart|
-|   220|        standart|
-|    45|        standart|
-|    35|        standart|
-|  NULL|            good|
-| -1500|            poor|
-|    25|        standart|
-|   220|        standart|
-|    45|        standart|
-|    35|        standart|
-|    35|        standart|
-|    25|        standart|
-|    50|        standart|
-+------+----------------+
 
+merged_df = df_customer_clean.join(df_customer_categorize, on="transaction_id", how="left")
+merged_df.show()
+```
+
+**Output:**
+```text
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+----------------+
+|transaction_id|user_id|product_id|transaction_date|amount|   status|            name|               email|age|   region|      Date|transaction_type|
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+----------------+
+|       T000001| C42446|      P007|       9/17/2025| 216.0|COMPLETED|    Laura Taylor|laura.taylor@exam...| 38|     WEST|2025-06-04|        standart|
+|       T000002| C28141|      P945|       1/31/2025| 320.0|COMPLETED|    Putri Taylor|putri.taylor@exam...| 21|  CENTRAL|2025-04-01|        standart|
+|       T000003| C74116|      P004|        1/8/2026|  90.0|COMPLETED|        Budi Lee|budi.lee@example.com| 42|NORTHWEST|2025-07-21|        standart|
+|       T000004|  C6106|      P003|        4/3/2025| 220.0|COMPLETED|     Sari Wilson|sari.wilson@examp...| 56|NORTHWEST|2025-04-01|        standart|
+|       T000005| C13508|      P004|      12/15/2025|  90.0|CANCELLED|   Michael Jones|michael.jones@exa...| 32|     EAST|2025-03-04|        standart|
+|       T000006| C69694|      P006|        5/5/2025|  85.0|COMPLETED|     Agus Aminah|agus.aminah@examp...| 48|  CENTRAL|2025-07-07|        standart|
+|       T000007| C10729|      P009|        8/3/2025| 160.0|COMPLETED|    Laura Aminah|laura.aminah@exam...| 65|     EAST|2025-01-13|        standart|
+|       T000008| C21622|      P003|       6/10/2025|-440.0|  PENDING|      Fajar Chen|fajar.chen@exampl...| 62|  CENTRAL|2025-03-08|            poor|
+|       T000009| C44581|      P010|       12/7/2025| 560.0|COMPLETED|       Putri Lee|putri.lee@example...| 58|     EAST|2025-01-29|            good|
+|       T000010|  C8520|      P005|       6/27/2025| 105.0|COMPLETED| MICHAEL AMINAH |             Unknown| 45|     WEST|2025-04-14|        standart|
+|       T000011|  C2958|      P006|        5/7/2025|  42.5|COMPLETED|    PUTRI JONES |             Unknown| 48|     WEST|2025-05-01|        standart|
+|       T000012| C52154|      P008|       10/9/2025|  24.0|COMPLETED|      Daniel Doe|             Unknown| 28|     EAST|2025-06-09|        standart|
+|       T000013| C36494|      P006|       12/4/2025|  85.0|COMPLETED|     Maya Wijaya|maya.wijaya@examp...| 60|     EAST|2025-04-29|        standart|
+|       T000014| C30584|      P997|       10/1/2025|  35.0|COMPLETED|    Laura Aminah|laura.aminah@exam...| 18|     EAST|2025-02-27|        standart|
+|       T000015| C48399|      P006|       1/28/2025| 127.5|CANCELLED|    James Wilson|james.wilson@exam...| 21|     EAST|2025-01-24|        standart|
+|       T000016| C59854|      P009|        2/4/2025| 320.0|COMPLETED|     Kevin Smith|kevin.smith@examp...| 26|  Unknown|2025-05-09|        standart|
+|       T000017| C27364|      P002|        7/6/2025|  12.5|COMPLETED|     Kevin Brown|kevin.brown@examp...| 31|  CENTRAL|2025-02-16|        standart|
+|       T000018| C80444|      P997|       6/27/2025|  45.0|COMPLETED|    MARIA PUTRA | MARIA.PUTRA@EXAM...| 59|  CENTRAL|2025-04-05|        standart|
+|       T000019| C78942|      P002|       3/15/2025|  25.0|COMPLETED|      Sari Brown|sari.brown@exampl...| 46|    NORTH|2025-06-27|        standart|
+|       T000020| C13394|      P005|      12/20/2025| 105.0|  pending|     Arif Aminah|arif.aminah@examp...| 39|    NORTH|2025-07-20|        standart|
++--------------+-------+----------+----------------+------+---------+----------------+--------------------+---+---------+----------+----------------+
+only showing top 20 rows
+```
+
+---
+
+# SQLite Database Storage
+
+```python
+# create connector
+conn = sqlite3.connect('my_database.db')
+cursor = conn.cursor()
 ```
 
 ```python
-pandas_df = df_cust.toPandas()
-pandas_df.to_sql("customers", conn, if_exists="replace", index=False)
+cursor.execute('CREATE TABLE IF NOT EXISTS customers_transaction (customer_id TEXT, name TEXT, email TEXT, age INTEGER, region TEXT, Date TEXT, transaction_type TEXT)')
 ```
+
 **Output:**
+```text
+<sqlite3.Cursor at 0x7a5b8029cc40>
 ```
-10
+
+```python
+pandas_df = merged_df.toPandas()
+pandas_df.to_sql("customers", conn, if_exists="replace", index=False)
 ```
 
 ```python
@@ -234,72 +353,3 @@ cursor.execute('select * from customers')
 print(cursor.fetchall())
 # conn.close()
 ```
-**Output:**
-```
-[('C001', 'John Doe', 'JOHN.DOE@EXAMPLE.COM', '34', 'WEST', '10/01/2025'), ('C002', ' john doe ', 'john.doe@example.com', 'Unknown', 'WEST', '15/02/2025'), ('C003', 'MARIA GARCIA', 'maria.garcia@example.com', '29', 'CENTRAL', '22/01/2025'), ('C004', 'Budi Santoso', ' BUDI.SANTOSO@EXAMPLE.COM ', '41', 'EAST', '02/03/2025'), ('C005', 'Siti Aminah', 'Unknown', '37', 'CENTRAL', '11/03/2025'), ('C006', 'Robert Smith', 'robert.smith@example.com', 'not_available', 'WEST', '18/03/2025'), ('C007', 'Andi Wijaya', 'andi.wijaya@example.com', '25', 'NORTH', '21/03/2025'), ('C008', 'Laura Chen', 'laura.chen@example.com', '31', 'EAST', '05/04/2025'), ('C009', 'Michael Brown', 'michael.brown@example.com', '52', 'WEST', '18/04/2025'), ('C010', 'Dewi Lestari', 'dewi.lestari@example.com', '28', 'CENTRAL', '22/04/2025')]
-```
-
-```python
-import requests
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.appName("RestApiIngestion").getOrCreate()
-
-# 1. Fetch JSON data from API
-url = "https://jsonplaceholder.typicode.com/posts"
-response = requests.get(url)
-data = response.json()  # List of dictionaries
-
-# 2. Convert raw JSON into a Spark DataFrame
-df = spark.createDataFrame(data)
-df.show(5)
-```
-**Output:**
-```
-+--------------------+---+--------------------+------+
-|                body| id|               title|userId|
-+--------------------+---+--------------------+------+
-|quia et suscipit\...|  1|sunt aut facere r...|     1|
-|est rerum tempore...|  2|        qui est esse|     1|
-|et iusto sed quo ...|  3|ea molestias quas...|     1|
-|ullam et saepe re...|  4|eum et est occaecati|     1|
-|repudiandae venia...|  5|  nesciunt quas odio|     1|
-+--------------------+---+--------------------+------+
-only showing top 5 rows
-```
-
-```python
-import requests
-from pyspark.sql import SparkSession
-
-spark = SparkSession.builder.appName("DistributedApiIngestion").getOrCreate()
-
-urls = [f"https://jsonplaceholder.typicode.com/posts?_page={i}" for i in range(1, 6)]
-
-rdd_urls = spark.sparkContext.parallelize(urls)
-
-def fetch_data(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.json()
-    return []
-
-rdd_results = rdd_urls.flatMap(fetch_data)
-df_api = spark.createDataFrame(rdd_results)
-
-df_api.show(5)
-```
-**Output:**
-```
-+--------------------+---+--------------------+------+
-|                body| id|               title|userId|
-+--------------------+---+--------------------+------+
-|quia et suscipit\...|  1|sunt aut facere r...|     1|
-|est rerum tempore...|  2|        qui est esse|     1|
-|et iusto sed quo ...|  3|ea molestias quas...|     1|
-|ullam et saepe re...|  4|eum et est occaecati|     1|
-|repudiandae venia...|  5|  nesciunt quas odio|     1|
-+--------------------+---+--------------------+------+
-only showing top 5 rows
-```
-
