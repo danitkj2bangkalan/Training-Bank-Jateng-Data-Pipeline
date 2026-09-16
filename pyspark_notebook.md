@@ -348,7 +348,7 @@ pandas_df.to_sql("customers", conn, if_exists="replace", index=False)
 ```
 
 ```python
-cursor.execute('select * from customers')
+cursor.execute('select * from customers limit 10')
 print(cursor.fetchall())
 # conn.close()
 ```
