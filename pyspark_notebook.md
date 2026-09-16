@@ -48,7 +48,7 @@ Drive already mounted at /content/drive; to attempt to forcibly remount, call dr
 ```python
 spark = SparkSession.builder.appName("RestApiIngestion").getOrCreate()
 
-url = "[https://jsonplaceholder.typicode.com/posts](https://jsonplaceholder.typicode.com/posts)"
+url = "https://jsonplaceholder.typicode.com/posts"
 response = requests.get(url)
 data = response.json()
 
@@ -70,10 +70,9 @@ df.show(5)
 only showing top 5 rows
 ```
 
-```python
-spark = SparkSession.builder.appName("DistributedApiIngestion").getOrCreate()
+```pythonspark = SparkSession.builder.appName("DistributedApiIngestion").getOrCreate()
 
-urls = [f"[https://jsonplaceholder.typicode.com/posts?_page=](https://jsonplaceholder.typicode.com/posts?_page=){i}" for i in range(1, 6)]
+urls = [f"https://jsonplaceholder.typicode.com/posts?_page={i}" for i in range(1, 6)]
 
 rdd_urls = spark.sparkContext.parallelize(urls)
 
