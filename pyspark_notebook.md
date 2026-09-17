@@ -352,3 +352,63 @@ cursor.execute('select * from customers limit 10')
 print(cursor.fetchall())
 # conn.close()
 ```
+
+
+```python
+# 1. Standardize and Cast Data Types
+cleaned_df = merged_df \
+    .withColumn("status_clean", sf.upper(sf.trim(sf.col("status")))) \
+    .withColumn("region_clean", sf.upper(sf.trim(sf.col("region")))) \
+    .withColumn("parsed_tx_date", sf.to_date(sf.col("transaction_date"), "M/d/yyyy"))
+cleaned_df.show()
+```
+
+
+```python
+# 2. Apply Rule Checks
+EMAIL_REGEX = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+VALID_STATUSES = ["COMPLETED", "CANCELLED", "PENDING"]
+
+validated_df = cleaned_df.withColumns({
+    "check_amount": sf.col("amount").isNotNull() & (sf.col("amount") > 0),
+    "check_age": sf.col("age").isNotNull() & (sf.col("age") >= 18) & (sf.col("age") <= 100),
+    "check_email": sf.col("email").isNotNull() & sf.col("email").rlike(EMAIL_REGEX),
+    "check_status": sf.col("status_clean").isin(VALID_STATUSES),
+    "check_region": sf.col("region_clean").isNotNull() & ~sf.col("region_clean").isin(["UNKNOWN", ""]),
+    "check_date": sf.col("parsed_tx_date").isNotNull()
+})
+validated_df.show()
+```
+
+
+```python# 3. Calculate Record Validity
+final_df = validated_df.withColumn(
+    "is_valid_record",
+    sf.col("check_amount") & 
+    sf.col("check_age") & 
+    sf.col("check_email") & 
+    sf.col("check_status") & 
+    sf.col("check_region") & 
+    sf.col("check_date")
+)
+final_df.show()
+```
+
+
+```python
+# 4. Route Records into Valid Data and Quarantine Data
+valid_records = final_df.filter(sf.col("is_valid_record") == True)
+
+# 5. Generate Data Quality Summary Report
+dq_summary = final_df.select(
+    sf.count("*").alias("total_records"),
+    sf.sum(sf.col("check_amount").cast("int")).alias("valid_amount_count"),
+    sf.sum(sf.col("check_age").cast("int")).alias("valid_age_count"),
+    sf.sum(sf.col("check_email").cast("int")).alias("valid_email_count"),
+    sf.sum(sf.col("check_status").cast("int")).alias("valid_status_count"),
+    sf.sum(sf.col("check_region").cast("int")).alias("valid_region_count"),
+    sf.sum(sf.col("is_valid_record").cast("int")).alias("total_passed_records")
+)
+
+dq_summary.show()
+```
